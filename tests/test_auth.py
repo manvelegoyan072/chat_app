@@ -82,3 +82,74 @@ async def test_refresh_with_invalid_token(async_client):
     )
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid or expired refresh token"
+
+
+@pytest_asyncio.fixture
+async def admin_user(db_session: AsyncSession):
+    from app.services.user_service import UserService
+    user_service = UserService(db_session)
+    user = await user_service.create_user(
+        UserCreate(name="Admin User", email="admin@test.com", password="password", role="admin")
+    )
+    return user
+
+
+@pytest_mark.asyncio
+async def test_create_user_with_role(async_client, db_session):
+    from app.services.user_service import UserService
+    user_service = UserService(db_session)
+    user = await user_service.create_user(
+        UserCreate(name="Test User", email="test2@test.com", password="password", role="user")
+    )
+    assert user.role == "user"
+    admin = await user_service.create_user(
+        UserCreate(name="Admin User", email="admin2@test.com", password="password", role="admin")
+    )
+    assert admin.role == "admin"
+
+
+@pytest_mark.asyncio
+async def test_group_add_participant_as_admin(async_client, admin_user, user):
+    # Логин как админ
+    login_response = await async_client.post(
+        "/auth/token",
+        data={"username": "admin@test.com", "password": "password"}
+    )
+    access_token = login_response.json()["access_token"]
+
+    # Создаём группу
+    from app.services.chat_service import ChatService
+    from app.services.group_service import GroupService
+    db = next(get_db())
+    chat_service = ChatService(db)
+    group_service = GroupService(db)
+    chat = await chat_service.create_group_chat(ChatCreate(name="Test Group"), admin_user.id)
+    group = await group_service.create_group(chat.id, admin_user.id, "Test Group")
+
+    # Добавляем участника
+    response = await async_client.post(
+        f"/chats/group/{group.id}/participants",
+        json={"user_id": user.id},
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert response.status_code == 200
+    assert response.json()["message"] == f"User {user.id} added to group {group.id}"
+
+
+@pytest_mark.asyncio
+async def test_group_add_participant_as_non_admin(async_client, user):
+    # Логин как обычный пользователь
+    login_response = await async_client.post(
+        "/auth/token",
+        data={"username": "test@test.com", "password": "password"}
+    )
+    access_token = login_response.json()["access_token"]
+
+    # Пытаемся добавить участника
+    response = await async_client.post(
+        f"/chats/group/1/participants",
+        json={"user_id": user.id},
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Only group creator or admin can add participants"

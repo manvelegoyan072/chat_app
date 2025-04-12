@@ -32,7 +32,10 @@ async def login_for_access_token(
         raise HTTPException(status_code=401, detail="Incorrect email or password")
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": str(user.id)}, expires_delta=access_token_expires)
+    access_token = create_access_token(
+        data={"sub": str(user.id), "role": user.role.value},
+        expires_delta=access_token_expires
+    )
     refresh_token = await user_service.create_refresh_token(user.id)
 
     return {
@@ -50,9 +53,10 @@ async def refresh_access_token(
     user_service = UserService(db)
     try:
         refresh_token_obj = await user_service.get_refresh_token(refresh_token)
+        user = await user_service.get_user_by_id(refresh_token_obj.user_id)
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={"sub": str(refresh_token_obj.user_id)},
+            data={"sub": str(user.id), "role": user.role.value},
             expires_delta=access_token_expires
         )
         return {
