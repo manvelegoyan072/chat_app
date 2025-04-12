@@ -9,6 +9,7 @@ from app.middlewares.csrf_middleware import csrf_middleware
 from app.logging_config import setup_logging
 from jose import JWTError, jwt
 from app.schemas.user import UserRole
+from prometheus_fastapi_instrumentator import Instrumentator
 import redis.asyncio as redis
 import os
 from typing import NamedTuple, Optional
@@ -20,6 +21,9 @@ app = FastAPI(
     debug=os.getenv("DEBUG_MODE", "False").lower() == "true"
 )
 
+
+Instrumentator().instrument(app).expose(app)
+
 app.middleware("http")(csrf_middleware)
 
 app.include_router(chat_router)
@@ -28,6 +32,11 @@ app.include_router(auth_router)
 
 redis_pool: redis.ConnectionPool = None
 logger = logging.getLogger(__name__)
+
+
+class CurrentUser(NamedTuple):
+    id: int
+    role: UserRole
 
 
 async def get_current_user(
