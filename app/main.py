@@ -1,5 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import FastAPI, Depends, HTTPException, Cookie
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_db, init_db
 from app.controllers.chat_controller import router as chat_router
@@ -8,7 +7,7 @@ from app.controllers.auth_controller import router as auth_router
 from jose import JWTError, jwt
 from app.schemas.user import UserRole
 import os
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 
 app = FastAPI(
     title="Messenger API",
@@ -20,22 +19,29 @@ app.include_router(chat_router)
 app.include_router(message_router)
 app.include_router(auth_router)
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
-
 
 class CurrentUser(NamedTuple):
     id: int
     role: UserRole
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
+async def get_current_user(
+        access_token: Optional[str] = Cookie(None),
+        token: Optional[str] = None,  # Для WebSocket
+        db: AsyncSession = Depends(get_db)
+):
     from app.services.user_service import UserService
 
     SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
     ALGORITHM = "HS256"
 
+    # Выбираем токен: cookie для REST, query-параметр для WebSocket
+    selected_token = access_token or token
+    if selected_token is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(selected_token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         role: str = payload.get("role")
         if user_id is None or role is None:

@@ -8,16 +8,21 @@ services:
       - "8000:8000"
     depends_on:
       - db
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/messenger
+      - redis
+    env_file:
+      - .env
     command: >
       /bin/sh -c "
       until pg_isready -h db -U user -d messenger; do
         echo 'Waiting for PostgreSQL...';
         sleep 1;
       done;
-      echo 'PostgreSQL is up!';
-      uvicorn app.main:app --host 0.0.0.0 --port 8000
+      until redis-cli -h redis ping; do
+        echo 'Waiting for Redis...';
+        sleep 1;
+      done;
+      echo 'PostgreSQL and Redis are up!';
+      uvicorn app.main:app --host ${APP_HOST} --port ${APP_PORT}
       "
   db:
     image: postgres:15
@@ -31,4 +36,13 @@ services:
       test: ["CMD", "pg_isready", "-U", "user"]
       interval: 5s
       timeout: 5s
+      retries: 5
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
       retries: 5

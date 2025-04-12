@@ -40,6 +40,16 @@ async def user(db_session: AsyncSession):
     return user
 
 
+@pytest_asyncio.fixture
+async def admin_user(db_session: AsyncSession):
+    from app.services.user_service import UserService
+    user_service = UserService(db_session)
+    user = await user_service.create_user(
+        UserCreate(name="Admin User", email="admin@test.com", password="password", role="admin")
+    )
+    return user
+
+
 @pytest_mark.asyncio
 async def test_login_with_refresh_token(async_client, user):
     response = await async_client.post(
@@ -48,7 +58,7 @@ async def test_login_with_refresh_token(async_client, user):
     )
     assert response.status_code == 200
     data = response.json()
-    assert "access_token" in data
+    assert "access_token" in response.cookies
     assert "refresh_token" in data
     assert data["token_type"] == "bearer"
 
@@ -69,7 +79,7 @@ async def test_refresh_token(async_client, user):
     )
     assert refresh_response.status_code == 200
     data = refresh_response.json()
-    assert "access_token" in data
+    assert "access_token" in refresh_response.cookies
     assert data["token_type"] == "bearer"
     assert "refresh_token" not in data  # Новый refresh-токен не выдаётся
 
@@ -82,16 +92,6 @@ async def test_refresh_with_invalid_token(async_client):
     )
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid or expired refresh token"
-
-
-@pytest_asyncio.fixture
-async def admin_user(db_session: AsyncSession):
-    from app.services.user_service import UserService
-    user_service = UserService(db_session)
-    user = await user_service.create_user(
-        UserCreate(name="Admin User", email="admin@test.com", password="password", role="admin")
-    )
-    return user
 
 
 @pytest_mark.asyncio
@@ -115,7 +115,7 @@ async def test_group_add_participant_as_admin(async_client, admin_user, user):
         "/auth/token",
         data={"username": "admin@test.com", "password": "password"}
     )
-    access_token = login_response.json()["access_token"]
+    assert login_response.status_code == 200
 
     # Создаём группу
     from app.services.chat_service import ChatService
@@ -129,8 +129,7 @@ async def test_group_add_participant_as_admin(async_client, admin_user, user):
     # Добавляем участника
     response = await async_client.post(
         f"/chats/group/{group.id}/participants",
-        json={"user_id": user.id},
-        headers={"Authorization": f"Bearer {access_token}"}
+        json={"user_id": user.id}
     )
     assert response.status_code == 200
     assert response.json()["message"] == f"User {user.id} added to group {group.id}"
@@ -143,13 +142,48 @@ async def test_group_add_participant_as_non_admin(async_client, user):
         "/auth/token",
         data={"username": "test@test.com", "password": "password"}
     )
-    access_token = login_response.json()["access_token"]
+    assert login_response.status_code == 200
 
     # Пытаемся добавить участника
     response = await async_client.post(
         f"/chats/group/1/participants",
-        json={"user_id": user.id},
-        headers={"Authorization": f"Bearer {access_token}"}
+        json={"user_id": user.id}
     )
     assert response.status_code == 403
     assert response.json()["detail"] == "Only group creator or admin can add participants"
+
+
+@pytest_mark.asyncio
+async def test_access_protected_endpoint_with_cookie(async_client, user):
+    # Логин
+    login_response = await async_client.post(
+        "/auth/token",
+        data={"username": "test@test.com", "password": "password"}
+    )
+    assert login_response.status_code == 200
+
+    # Проверяем защищённый эндпоинт
+    response = await async_client.post(
+        "/chats/",
+        json={"user1_id": user.id, "user2_id": user.id + 1}
+    )
+    assert response.status_code == 200  # Cookie автоматически отправляется
+
+
+@pytest_mark.asyncio
+async def test_logout(async_client, user):
+    # Логин
+    login_response = await async_client.post(
+        "/auth/token",
+        data={"username": "test@test.com", "password": "password"}
+    )
+    refresh_token = login_response.json()["refresh_token"]
+
+    # Выход
+    logout_response = await async_client.post(
+        "/auth/logout",
+        json={"refresh_token": refresh_token}
+    )
+    assert logout_response.status_code == 200
+    assert "access_token" not in logout_response.cookies
+    assert logout_response.json()["message"] == "Logged out successfully"
