@@ -40,6 +40,19 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  test-db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: test_messenger
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "test_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
   redis:
     image: redis:7
     ports:
