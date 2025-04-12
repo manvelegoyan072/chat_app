@@ -14,11 +14,11 @@ class ChatService:
         self.user_repo = UserRepository(session)
 
     async def create_personal_chat(self, user1_id: int, user2_id: int) -> ChatResponse:
-        # Проверка существования пользователей
+
         if not await self.user_repo.get_by_id(user1_id) or not await self.user_repo.get_by_id(user2_id):
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Проверка на существующий чат между пользователями
+
         existing_chat = await self.chat_repo.get_personal_chat(user1_id, user2_id)
         if existing_chat:
             raise HTTPException(status_code=400, detail="Personal chat already exists")
@@ -29,12 +29,12 @@ class ChatService:
         )
         created_chat = await self.chat_repo.create(chat)
 
-        # Добавление участников
+
         await self.chat_repo.add_participants(created_chat.id, [user1_id, user2_id])
         return ChatResponse.model_validate(created_chat)
 
     async def create_group_chat(self, chat_data: ChatCreate, creator_id: int) -> ChatResponse:
-        # Проверка создателя
+
         if not await self.user_repo.get_by_id(creator_id):
             raise HTTPException(status_code=404, detail="Creator not found")
 
@@ -44,7 +44,7 @@ class ChatService:
         )
         created_chat = await self.chat_repo.create(chat)
 
-        # Создание группы
+
         await self.group_repo.create_group(created_chat.id, creator_id, chat_data.name)
         return ChatResponse.model_validate(created_chat)
 

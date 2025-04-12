@@ -4,6 +4,7 @@ from app.config import get_db, init_db
 from app.controllers.chat_controller import router as chat_router
 from app.controllers.message_controller import router as message_router
 from app.controllers.auth_controller import router as auth_router
+from app.services.redis_service import RedisService
 from jose import JWTError, jwt
 from app.schemas.user import UserRole
 import os
@@ -27,7 +28,7 @@ class CurrentUser(NamedTuple):
 
 async def get_current_user(
         access_token: Optional[str] = Cookie(None),
-        token: Optional[str] = None,  # Для WebSocket
+        token: Optional[str] = None,
         db: AsyncSession = Depends(get_db)
 ):
     from app.services.user_service import UserService
@@ -35,10 +36,14 @@ async def get_current_user(
     SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
     ALGORITHM = "HS256"
 
-    # Выбираем токен: cookie для REST, query-параметр для WebSocket
     selected_token = access_token or token
     if selected_token is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Проверяем чёрный список
+    redis_service = RedisService()
+    if await redis_service.is_blacklisted(selected_token):
+        raise HTTPException(status_code=401, detail="Token has been revoked")
 
     try:
         payload = jwt.decode(selected_token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -61,6 +66,12 @@ async def get_current_user(
 async def startup_event():
     if os.getenv("ENVIRONMENT", "development") == "development":
         await init_db()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    redis_service = RedisService()
+    await redis_service.close()
 
 
 @app.get("/")

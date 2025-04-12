@@ -5,12 +5,12 @@ class GroupBase(BaseModel):
     name: str
 
 class GroupCreate(GroupBase):
-    participant_ids: List[int]  # Список ID участников группы
+    participant_ids: List[int]
 
 class GroupResponse(GroupBase):
     id: int
     creator_id: int
-    participants: List["UserResponse"]  # Ссылка на схему пользователей
+    participants: List["UserResponse"]
 
     class Config:
         from_attributes = True

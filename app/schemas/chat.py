@@ -10,7 +10,7 @@ class ChatBase(BaseModel):
     type: ChatType
 
 class ChatCreate(ChatBase):
-    pass  # Наследует все поля из ChatBase, можно добавить дополнительные при необходимости
+    pass
 
 class ChatResponse(ChatBase):
     id: int

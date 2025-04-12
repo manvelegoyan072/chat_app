@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.user_service import UserService
+from app.services.redis_service import RedisService
 from app.schemas.user import UserCreate, UserResponse
 from app.config import get_db
 from jose import jwt
@@ -41,7 +42,6 @@ async def login_for_access_token(
     )
     refresh_token = await user_service.create_refresh_token(user.id)
 
-    # Устанавливаем access-токен в HTTP-only cookie
     response.set_cookie(
         key="access_token",
         value=access_token,
@@ -72,7 +72,6 @@ async def refresh_access_token(
             data={"sub": str(user.id), "role": user.role.value},
             expires_delta=access_token_expires
         )
-        # Обновляем cookie с новым access-токеном
         response.set_cookie(
             key="access_token",
             value=access_token,
@@ -87,7 +86,18 @@ async def refresh_access_token(
 
 
 @router.post("/logout")
-async def logout(response: Response, refresh_token: str = None, db: AsyncSession = Depends(get_db)):
+async def logout(
+        response: Response,
+        access_token: str = Cookie(None),
+        refresh_token: str = None,
+        db: AsyncSession = Depends(get_db)
+):
+    redis_service = RedisService()
+
+
+    if access_token:
+        await redis_service.add_to_blacklist(access_token, ACCESS_TOKEN_EXPIRE_MINUTES)
+
 
     if refresh_token:
         user_service = UserService(db)
@@ -95,7 +105,6 @@ async def logout(response: Response, refresh_token: str = None, db: AsyncSession
             await user_service.delete_refresh_token(refresh_token)
         except HTTPException:
             pass
-
 
     response.delete_cookie(key="access_token")
     return {"message": "Logged out successfully"}

@@ -6,7 +6,7 @@ class MessageBase(BaseModel):
 
 class MessageCreate(MessageBase):
     chat_id: int
-    # sender_id не указываем, если он берется из аутентификации
+
 
 class MessageResponse(MessageBase):
     id: int

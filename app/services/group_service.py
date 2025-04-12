@@ -18,7 +18,7 @@ class GroupService:
         if not group:
             raise HTTPException(status_code=404, detail="Group not found")
 
-        # Проверка: только создатель (админ группы) может добавлять участников
+
         if group.creator_id != current_user_id:
             from app.services.user_service import UserService
             user_service = UserService(self.group_repo.session)
@@ -33,7 +33,7 @@ class GroupService:
         if not group:
             raise HTTPException(status_code=404, detail="Group not found")
 
-        # Аналогичная проверка для удаления
+
         if group.creator_id != current_user_id:
             from app.services.user_service import UserService
             user_service = UserService(self.group_repo.session)

@@ -10,7 +10,7 @@ class UserCreate(BaseModel):
     name: str
     email: EmailStr
     password: str
-    role: Optional[UserRole] = UserRole.USER  # Дефолтная роль
+    role: Optional[UserRole] = UserRole.USER
 
 class UserResponse(BaseModel):
     id: int

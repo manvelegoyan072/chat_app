@@ -79,8 +79,8 @@ class UserService:
         await self.session.commit()
 
     async def check_user_role(self, user_id: int, required_role: UserRole) -> bool:
-        """
-        Проверяет, имеет ли пользователь нужную роль.
-        """
+
+
+
         user = await self.get_user_by_id(user_id)
         return user.role == required_role

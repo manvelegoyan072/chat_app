@@ -6,17 +6,17 @@ from datetime import datetime
 
 Base = declarative_base()
 
-# Типы чатов
+
 class ChatType(PyEnum):
     PERSONAL = "personal"
     GROUP = "group"
 
-# Типы ролей
+
 class UserRole(PyEnum):
     USER = "user"
     ADMIN = "admin"
 
-# Таблица связей для участников группы
+
 group_participants = Table(
     "group_participants",
     Base.metadata,
@@ -24,8 +24,8 @@ group_participants = Table(
     Column("user_id", Integer, ForeignKey("users.id"), primary_key=True)
 )
 
-# Модель пользователя
-# Модель для refresh-токенов
+
+
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
     id = Column(Integer, primary_key=True, index=True)
@@ -34,7 +34,7 @@ class RefreshToken(Base):
     expires_at = Column(DateTime, nullable=False)
     user = relationship("User", back_populates="refresh_tokens")
 
-# Модель пользователя
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -47,7 +47,7 @@ class User(Base):
     messages = relationship("Message", back_populates="sender")
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
 
-# Модель чата
+
 class Chat(Base):
     __tablename__ = "chats"
     id = Column(Integer, primary_key=True, index=True)
@@ -56,7 +56,7 @@ class Chat(Base):
     messages = relationship("Message", back_populates="chat")
     group = relationship("Group", back_populates="chat", uselist=False)
 
-# Модель группы
+
 class Group(Base):
     __tablename__ = "groups"
     id = Column(Integer, primary_key=True, index=True)
@@ -67,7 +67,7 @@ class Group(Base):
     participants = relationship("User", secondary=group_participants, back_populates="groups")
     chat = relationship("Chat", back_populates="group")
 
-# Модель сообщения
+
 class Message(Base):
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True, index=True)
@@ -76,6 +76,6 @@ class Message(Base):
     text = Column(String(2000), nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow, index=True, nullable=False)
     is_read = Column(Boolean, default=False, nullable=False)
-    uuid = Column(String(36), unique=True, nullable=False)  # Для предотвращения дублирования
+    uuid = Column(String(36), unique=True, nullable=False)
     chat = relationship("Chat", back_populates="messages")
     sender = relationship("User", back_populates="messages")

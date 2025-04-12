@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.models.models import Base
 from app.schemas.user import UserCreate
+import redis.asyncio as redis
 
 
 @pytest_asyncio.fixture
@@ -18,6 +19,13 @@ async def db_session():
     async with async_session() as session:
         yield session
     await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def redis_client():
+    client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+    yield client
+    await client.aclose()
 
 
 @pytest_asyncio.fixture
@@ -65,14 +73,12 @@ async def test_login_with_refresh_token(async_client, user):
 
 @pytest_mark.asyncio
 async def test_refresh_token(async_client, user):
-    # Получаем токены
     login_response = await async_client.post(
         "/auth/token",
         data={"username": "test@test.com", "password": "password"}
     )
     refresh_token = login_response.json()["refresh_token"]
 
-    # Обновляем access-токен
     refresh_response = await async_client.post(
         "/auth/refresh",
         json={"refresh_token": refresh_token}
@@ -81,7 +87,7 @@ async def test_refresh_token(async_client, user):
     data = refresh_response.json()
     assert "access_token" in refresh_response.cookies
     assert data["token_type"] == "bearer"
-    assert "refresh_token" not in data  # Новый refresh-токен не выдаётся
+    assert "refresh_token" not in data
 
 
 @pytest_mark.asyncio
@@ -110,14 +116,12 @@ async def test_create_user_with_role(async_client, db_session):
 
 @pytest_mark.asyncio
 async def test_group_add_participant_as_admin(async_client, admin_user, user):
-    # Логин как админ
     login_response = await async_client.post(
         "/auth/token",
         data={"username": "admin@test.com", "password": "password"}
     )
     assert login_response.status_code == 200
 
-    # Создаём группу
     from app.services.chat_service import ChatService
     from app.services.group_service import GroupService
     db = next(get_db())
@@ -126,7 +130,6 @@ async def test_group_add_participant_as_admin(async_client, admin_user, user):
     chat = await chat_service.create_group_chat(ChatCreate(name="Test Group"), admin_user.id)
     group = await group_service.create_group(chat.id, admin_user.id, "Test Group")
 
-    # Добавляем участника
     response = await async_client.post(
         f"/chats/group/{group.id}/participants",
         json={"user_id": user.id}
@@ -137,14 +140,12 @@ async def test_group_add_participant_as_admin(async_client, admin_user, user):
 
 @pytest_mark.asyncio
 async def test_group_add_participant_as_non_admin(async_client, user):
-    # Логин как обычный пользователь
     login_response = await async_client.post(
         "/auth/token",
         data={"username": "test@test.com", "password": "password"}
     )
     assert login_response.status_code == 200
 
-    # Пытаемся добавить участника
     response = await async_client.post(
         f"/chats/group/1/participants",
         json={"user_id": user.id}
@@ -155,31 +156,27 @@ async def test_group_add_participant_as_non_admin(async_client, user):
 
 @pytest_mark.asyncio
 async def test_access_protected_endpoint_with_cookie(async_client, user):
-    # Логин
     login_response = await async_client.post(
         "/auth/token",
         data={"username": "test@test.com", "password": "password"}
     )
     assert login_response.status_code == 200
 
-    # Проверяем защищённый эндпоинт
     response = await async_client.post(
         "/chats/",
         json={"user1_id": user.id, "user2_id": user.id + 1}
     )
-    assert response.status_code == 200  # Cookie автоматически отправляется
+    assert response.status_code == 200
 
 
 @pytest_mark.asyncio
 async def test_logout(async_client, user):
-    # Логин
     login_response = await async_client.post(
         "/auth/token",
         data={"username": "test@test.com", "password": "password"}
     )
     refresh_token = login_response.json()["refresh_token"]
 
-    # Выход
     logout_response = await async_client.post(
         "/auth/logout",
         json={"refresh_token": refresh_token}
@@ -187,3 +184,37 @@ async def test_logout(async_client, user):
     assert logout_response.status_code == 200
     assert "access_token" not in logout_response.cookies
     assert logout_response.json()["message"] == "Logged out successfully"
+
+
+@pytest_mark.asyncio
+async def test_blacklist_token(async_client, user, redis_client):
+    login_response = await async_client.post(
+        "/auth/token",
+        data={"username": "test@test.com", "password": "password"}
+    )
+    assert login_response.status_code == 200
+    access_token = login_response.cookies["access_token"]
+    refresh_token = login_response.json()["refresh_token"]
+
+
+    chat_response = await async_client.post(
+        "/chats/",
+        json={"user1_id": user.id, "user2_id": user.id + 1}
+    )
+    assert chat_response.status_code == 200
+
+
+    logout_response = await async_client.post(
+        "/auth/logout",
+        json={"refresh_token": refresh_token}
+    )
+    assert logout_response.status_code == 200
+
+
+    async_client.cookies.set("access_token", access_token)
+    chat_response = await async_client.post(
+        "/chats/",
+        json={"user1_id": user.id, "user2_id": user.id + 1}
+    )
+    assert chat_response.status_code == 401
+    assert chat_response.json()["detail"] == "Token has been revoked"

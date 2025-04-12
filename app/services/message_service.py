@@ -14,11 +14,11 @@ class MessageService:
         self.chat_repo = ChatRepository(session)
 
     async def send_message(self, message_data: MessageCreate, sender_id: int, message_uuid: str) -> MessageResponse:
-        # Проверка существования чата
+
         if not await self.chat_repo.get_by_id(message_data.chat_id):
             raise HTTPException(status_code=404, detail="Chat not found")
 
-        # Проверка на дублирование сообщения
+
         if await self.message_repo.get_by_uuid(message_uuid):
             raise HTTPException(status_code=400, detail="Message already exists")
 
@@ -28,7 +28,7 @@ class MessageService:
             text=message_data.text,
             timestamp=datetime.utcnow(),
             is_read=False,
-            uuid=message_uuid  # Предполагается, что модель Message имеет поле uuid
+            uuid=message_uuid
         )
         created_message = await self.message_repo.create(message)
         return MessageResponse.model_validate(created_message)
@@ -44,7 +44,7 @@ class MessageService:
         if not message:
             raise HTTPException(status_code=404, detail="Message not found")
 
-        # Проверка, что пользователь имеет доступ к чату
+
         chat = await self.chat_repo.get_by_id(message.chat_id)
         if not await self.chat_repo.is_participant(chat.id, user_id):
             raise HTTPException(status_code=403, detail="User not in chat")
