@@ -22,8 +22,11 @@ services:
         sleep 1;
       done;
       echo 'PostgreSQL and Redis are up!';
+      alembic upgrade head;
       uvicorn app.main:app --host ${APP_HOST} --port ${APP_PORT}
       "
+    volumes:
+      - ./logs:/app/logs
   db:
     image: postgres:15
     environment:
@@ -46,3 +49,5 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+volumes:
+  logs:
