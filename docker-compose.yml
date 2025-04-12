@@ -1,0 +1,34 @@
+version: '3.8'
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/messenger
+    command: >
+      /bin/sh -c "
+      until pg_isready -h db -U user -d messenger; do
+        echo 'Waiting for PostgreSQL...';
+        sleep 1;
+      done;
+      echo 'PostgreSQL is up!';
+      uvicorn app.main:app --host 0.0.0.0 --port 8000
+      "
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: messenger
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
