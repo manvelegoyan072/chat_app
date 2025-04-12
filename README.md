@@ -1,112 +1,124 @@
+
 # Messenger API
 
 Мессенджер в реальном времени, построенный на FastAPI, SQLAlchemy, Redis и с поддержкой WebSocket. Поддерживает аутентификацию пользователей с JWT-токенами, роли (пользователь/админ), групповые и личные чаты, защиту от CSRF и обмен сообщениями в реальном времени.
 
-## Возможности
+##  Возможности
 
-- **Аутентификация**: Вход с использованием JWT-токенов (access/refresh), хранимых в HTTP-only cookies.
+- **Аутентификация**: JWT-токены (access/refresh) в HTTP-only cookies.
 - **Авторизация**: Ролевой доступ (пользователь, администратор).
-- **Чаты**: Личные и групповые чаты с обменом сообщениями в реальном времени.
-- **Безопасность**: Защита от CSRF, чёрный список токенов в Redis.
-- **База данных**: PostgreSQL с миграциями через Alembic.
-- **Мониторинг**: Prometheus и Grafana для визуализации метрик (HTTP-запросы, Redis, PostgreSQL, система).
-- **Логирование**: Структурированные логи с ротацией файлов.
+- **Чаты**: Личные и групповые чаты с WebSocket-поддержкой.
+- **Безопасность**: CSRF-защита, чёрный список токенов в Redis.
+- **База данных**: PostgreSQL с Alembic-механизмом миграций.
+- **Мониторинг**: Prometheus и Grafana для метрик (HTTP, Redis, PostgreSQL, система).
+- **Логирование**: Структурированное логирование с ротацией.
 
-## Требования
+##  Требования
 
 - Python 3.11+
 - Docker и Docker Compose
 - PostgreSQL
 - Redis
 
-## Установка
+##  Установка
 
 1. Клонируйте репозиторий:
    ```bash
    git clone <repository-url>
    cd messenger
-Создайте и настройте .env:
-bash
+   ```
 
-Collapse
+2. Создайте и настройте `.env`:
+   ```bash
+   cp .env.example .env
+   ```
 
-Wrap
+3. Соберите и запустите сервисы:
+   ```bash
+   docker-compose up --build
+   ```
 
-Copy
-cp .env.example .env
-Соберите и запустите сервисы:
-bash
+4. Примените миграции базы данных:
+   ```bash
+   docker-compose exec app alembic upgrade head
+   ```
 
-Collapse
+##  Мониторинг
 
-Wrap
+Приложение использует Prometheus и Grafana для мониторинга.
 
-Copy
-docker-compose up --build
-Примените миграции базы данных:
-bash
+- **Prometheus**: http://localhost:9090  
+  Сбор метрик с FastAPI (`/metrics`), Redis, PostgreSQL и системы.
 
-Collapse
+- **Grafana**: http://localhost:3000  
+  Логин: `admin` / Пароль: `admin`
 
-Wrap
+  Дашборды:
+  - FastAPI: ID `11378`
+  - Redis: ID `763`
+  - PostgreSQL: ID `455`
+  - Node/System: ID `1860`
 
-Copy
-docker-compose exec app alembic upgrade head
-Мониторинг
-Приложение использует Prometheus и Grafana для мониторинга:
+- **Оповещения**:
+  - Ошибки 5xx > 5%
+  - Задержка > 1s (99-й перцентиль)
 
-Prometheus: Доступ по адресу http://localhost:9090
-Собирает метрики с FastAPI (/metrics), Redis, PostgreSQL и системы.
-Grafana: Доступ по адресу http://localhost:3000 (логин/пароль: admin/admin)
-Дашборды: FastAPI (ID 11378), Redis (ID 763), PostgreSQL (ID 455), Node (ID 1860).
-Оповещения: Настроены на высокий уровень ошибок (>5%) и задержки (>1с).
-Для добавления собственных метрик:
+### Добавление собственных метрик:
 
-Расширьте app/main.py с помощью prometheus_client для создания счётчиков/датчиков.
-Обновите дашборды Grafana с новыми PromQL-запросами.
-Использование
-API: Документация доступна по адресу http://localhost:8000/docs
-WebSocket: Подключение к /chats/{chat_id}?token={jwt_token} для обмена сообщениями в реальном времени.
-Тестирование
-Запустите тесты:
+- Используйте `prometheus_client` в `app/main.py`.
+- Обновите Grafana-дэшборды PromQL-запросами.
 
-bash
+##  Использование
 
-Collapse
+- **API-документация**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **WebSocket**:  
+  Подключение к чату:  
+  ```
+  /chats/{chat_id}?token={jwt_token}
+  ```
 
-Wrap
+##  Тестирование
 
-Copy
+Запуск тестов:
+```bash
 pytest
-Переменные окружения
-Смотрите .env.example для подробностей:
+```
 
-DATABASE_URL: Строка подключения к PostgreSQL.
-REDIS_HOST, REDIS_PORT: Подключение к Redis.
-SECRET_KEY, CSRF_SECRET: Ключи безопасности.
-LOG_LEVEL, LOG_FILE: Настройки логирования.
-REDIS_MAX_CONNECTIONS: Размер пула соединений Redis.
-Структура проекта
-app/: Основной код приложения.
-controllers/: Эндпоинты API и WebSocket.
-services/: Бизнес-логика (пользователи, чаты, сообщения, Redis).
-models/: Модели SQLAlchemy.
-schemas/: Схемы Pydantic.
-middlewares/: Middleware для CSRF.
-logging_config.py: Настройка логирования.
-alembic/: Миграции базы данных.
-tests/: Юнит- и интеграционные тесты.
-prometheus.yml, prometheus-rules.yml: Конфигурация Prometheus.
-docker-compose.yml: Сервисы Docker (приложение, БД, Redis, мониторинг).
-Детали мониторинга
-Метрики FastAPI: Количество запросов, длительность, уровень ошибок.
-Метрики Redis: Частота команд, использование памяти, количество соединений.
-Метрики PostgreSQL: Производительность запросов, активные соединения.
-Метрики системы: Загрузка CPU, память, диск.
-Оповещения срабатывают при >5% ошибок 5xx или задержке >1с (99-й перцентиль).
-Участие
-Сделайте форк репозитория.
-Создайте ветку для новой функции (git checkout -b feature-name).
-Зафиксируйте изменения (git commit -m 'Добавлена функция').
-Отправьте ветку в репозиторий (git push origin feature-name).
-Откройте Pull Request.
+##  Переменные окружения
+
+Подробнее см. `.env.example`:
+
+- `DATABASE_URL`: Строка подключения к PostgreSQL.
+- `REDIS_HOST`, `REDIS_PORT`: Подключение к Redis.
+- `SECRET_KEY`, `CSRF_SECRET`: Ключи безопасности.
+- `LOG_LEVEL`, `LOG_FILE`: Настройки логирования.
+- `REDIS_MAX_CONNECTIONS`: Размер пула Redis-соединений.
+
+##  Структура проекта
+
+```
+app/
+├── controllers/       # Эндпоинты API и WebSocket
+├── services/          # Бизнес-логика (пользователи, чаты, Redis)
+├── models/            # SQLAlchemy-модели
+├── schemas/           # Pydantic-схемы
+├── middlewares/       # CSRF Middleware
+├── logging_config.py  # Логирование
+alembic/               # Миграции базы данных
+tests/                 # Тесты
+prometheus.yml         # Конфигурация Prometheus
+prometheus-rules.yml   # Алёрты
+docker-compose.yml     # Docker-сервисы
+```
+
+##  Детали мониторинга
+
+- **FastAPI**: Кол-во запросов, ошибки, задержка.
+- **Redis**: Команды, память, соединения.
+- **PostgreSQL**: Запросы, соединения.
+- **Система**: CPU, RAM, диск.
+
+Оповещения:
+- Ошибки 5xx > 5%
+- Задержка > 1s (99-й перцентиль)
+
