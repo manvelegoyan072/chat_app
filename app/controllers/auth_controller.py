@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.user_service import UserService
 from app.services.redis_service import RedisService
+from app.services.csrf_service import CSRFService
 from app.schemas.user import UserCreate, UserResponse
 from app.config import get_db
 from jose import jwt
@@ -51,8 +52,12 @@ async def login_for_access_token(
         max_age=int(access_token_expires.total_seconds())
     )
 
+    csrf_service = CSRFService()
+    csrf_token = csrf_service.generate_csrf_token(str(user.id))
+
     return {
         "refresh_token": refresh_token,
+        "csrf_token": csrf_token,
         "token_type": "bearer"
     }
 
@@ -80,7 +85,12 @@ async def refresh_access_token(
             samesite=COOKIE_SAMESITE,
             max_age=int(access_token_expires.total_seconds())
         )
-        return {"token_type": "bearer"}
+        csrf_service = CSRFService()
+        csrf_token = csrf_service.generate_csrf_token(str(user.id))
+        return {
+            "token_type": "bearer",
+            "csrf_token": csrf_token
+        }
     except HTTPException as e:
         raise HTTPException(status_code=401, detail=str(e.detail))
 
@@ -90,14 +100,25 @@ async def logout(
         response: Response,
         access_token: str = Cookie(None),
         refresh_token: str = None,
+        csrf_token: str = Depends(lambda x: x.headers.get("X-CSRF-Token")),
         db: AsyncSession = Depends(get_db)
 ):
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Проверяем CSRF-токен
+    try:
+        payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        csrf_service = CSRFService()
+        if not csrf_service.verify_csrf_token(user_id, csrf_token):
+            raise HTTPException(status_code=403, detail="Invalid CSRF token")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
     redis_service = RedisService()
-
-
     if access_token:
         await redis_service.add_to_blacklist(access_token, ACCESS_TOKEN_EXPIRE_MINUTES)
-
 
     if refresh_token:
         user_service = UserService(db)

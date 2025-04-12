@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException, Cookie
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.config import get_db, init_db
+from app.config import get_db
 from app.controllers.chat_controller import router as chat_router
 from app.controllers.message_controller import router as message_router
 from app.controllers.auth_controller import router as auth_router
 from app.services.redis_service import RedisService
+from app.middlewares.csrf_middleware import csrf_middleware
 from jose import JWTError, jwt
 from app.schemas.user import UserRole
 import os
@@ -15,6 +16,8 @@ app = FastAPI(
     description="API for a real-time chat application",
     debug=os.getenv("DEBUG_MODE", "False").lower() == "true"
 )
+
+app.middleware("http")(csrf_middleware)
 
 app.include_router(chat_router)
 app.include_router(message_router)
@@ -40,7 +43,6 @@ async def get_current_user(
     if selected_token is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # Проверяем чёрный список
     redis_service = RedisService()
     if await redis_service.is_blacklisted(selected_token):
         raise HTTPException(status_code=401, detail="Token has been revoked")
@@ -60,12 +62,6 @@ async def get_current_user(
         return CurrentUser(id=user.id, role=UserRole(role))
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
-
-
-@app.on_event("startup")
-async def startup_event():
-    if os.getenv("ENVIRONMENT", "development") == "development":
-        await init_db()
 
 
 @app.on_event("shutdown")

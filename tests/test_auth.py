@@ -10,6 +10,8 @@ from app.schemas.user import UserCreate
 import redis.asyncio as redis
 
 
+
+
 @pytest_asyncio.fixture
 async def db_session():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=True)
@@ -68,6 +70,7 @@ async def test_login_with_refresh_token(async_client, user):
     data = response.json()
     assert "access_token" in response.cookies
     assert "refresh_token" in data
+    assert "csrf_token" in data
     assert data["token_type"] == "bearer"
 
 
@@ -86,6 +89,7 @@ async def test_refresh_token(async_client, user):
     assert refresh_response.status_code == 200
     data = refresh_response.json()
     assert "access_token" in refresh_response.cookies
+    assert "csrf_token" in data
     assert data["token_type"] == "bearer"
     assert "refresh_token" not in data
 
@@ -121,6 +125,32 @@ async def test_group_add_participant_as_admin(async_client, admin_user, user):
         data={"username": "admin@test.com", "password": "password"}
     )
     assert login_response.status_code == 200
+    csrf_token = login_response.json()["csrf_token"]
+
+    from app.services.chat_service import ChatService
+    from app.services.group_service import GroupService
+    db = next(get_db())
+    chat_service = ChatService(db)
+    group_service = GroupService(db)
+    chat = await chat_service.create_group_chat(ChatCreate(name="Test Group"), admin_user.id)
+    group = await group_service.create_group(chat.id, admin_user.id, "Test Group")
+
+    response = await async_client.post(
+        f"/chats/group/{group.id}/participants",
+        json={"user_id": user.id},
+        headers={"X-CSRF-Token": csrf_token}
+    )
+    assert response.status_code == 200
+    assert response.json()["message"] == f"User {user.id} added to group {group.id}"
+
+
+@pytest_mark.asyncio
+async def test_group_add_participant_without_csrf(async_client, admin_user, user):
+    login_response = await async_client.post(
+        "/auth/token",
+        data={"username": "admin@test.com", "password": "password"}
+    )
+    assert login_response.status_code == 200
 
     from app.services.chat_service import ChatService
     from app.services.group_service import GroupService
@@ -134,8 +164,8 @@ async def test_group_add_participant_as_admin(async_client, admin_user, user):
         f"/chats/group/{group.id}/participants",
         json={"user_id": user.id}
     )
-    assert response.status_code == 200
-    assert response.json()["message"] == f"User {user.id} added to group {group.id}"
+    assert response.status_code == 403
+    assert response.json()["detail"] == "CSRF token missing"
 
 
 @pytest_mark.asyncio
@@ -145,10 +175,12 @@ async def test_group_add_participant_as_non_admin(async_client, user):
         data={"username": "test@test.com", "password": "password"}
     )
     assert login_response.status_code == 200
+    csrf_token = login_response.json()["csrf_token"]
 
     response = await async_client.post(
         f"/chats/group/1/participants",
-        json={"user_id": user.id}
+        json={"user_id": user.id},
+        headers={"X-CSRF-Token": csrf_token}
     )
     assert response.status_code == 403
     assert response.json()["detail"] == "Only group creator or admin can add participants"
@@ -161,10 +193,12 @@ async def test_access_protected_endpoint_with_cookie(async_client, user):
         data={"username": "test@test.com", "password": "password"}
     )
     assert login_response.status_code == 200
+    csrf_token = login_response.json()["csrf_token"]
 
     response = await async_client.post(
         "/chats/",
-        json={"user1_id": user.id, "user2_id": user.id + 1}
+        json={"user1_id": user.id, "user2_id": user.id + 1},
+        headers={"X-CSRF-Token": csrf_token}
     )
     assert response.status_code == 200
 
@@ -176,10 +210,12 @@ async def test_logout(async_client, user):
         data={"username": "test@test.com", "password": "password"}
     )
     refresh_token = login_response.json()["refresh_token"]
+    csrf_token = login_response.json()["csrf_token"]
 
     logout_response = await async_client.post(
         "/auth/logout",
-        json={"refresh_token": refresh_token}
+        json={"refresh_token": refresh_token},
+        headers={"X-CSRF-Token": csrf_token}
     )
     assert logout_response.status_code == 200
     assert "access_token" not in logout_response.cookies
@@ -195,26 +231,27 @@ async def test_blacklist_token(async_client, user, redis_client):
     assert login_response.status_code == 200
     access_token = login_response.cookies["access_token"]
     refresh_token = login_response.json()["refresh_token"]
-
+    csrf_token = login_response.json()["csrf_token"]
 
     chat_response = await async_client.post(
         "/chats/",
-        json={"user1_id": user.id, "user2_id": user.id + 1}
+        json={"user1_id": user.id, "user2_id": user.id + 1},
+        headers={"X-CSRF-Token": csrf_token}
     )
     assert chat_response.status_code == 200
 
-
     logout_response = await async_client.post(
         "/auth/logout",
-        json={"refresh_token": refresh_token}
+        json={"refresh_token": refresh_token},
+        headers={"X-CSRF-Token": csrf_token}
     )
     assert logout_response.status_code == 200
-
 
     async_client.cookies.set("access_token", access_token)
     chat_response = await async_client.post(
         "/chats/",
-        json={"user1_id": user.id, "user2_id": user.id + 1}
+        json={"user1_id": user.id, "user2_id": user.id + 1},
+        headers={"X-CSRF-Token": csrf_token}
     )
     assert chat_response.status_code == 401
     assert chat_response.json()["detail"] == "Token has been revoked"
