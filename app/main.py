@@ -14,6 +14,8 @@ import redis.asyncio as redis
 import os
 from typing import NamedTuple, Optional
 import logging
+from prometheus_client import Counter
+websocket_connections_total = Counter('websocket_connections_total', 'Total WebSocket connections')
 
 app = FastAPI(
     title="Messenger API",
