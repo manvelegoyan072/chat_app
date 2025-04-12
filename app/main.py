@@ -8,6 +8,7 @@ from app.services.redis_service import RedisService
 from app.middlewares.csrf_middleware import csrf_middleware
 from jose import JWTError, jwt
 from app.schemas.user import UserRole
+import redis.asyncio as redis
 import os
 from typing import NamedTuple, Optional
 
@@ -22,6 +23,9 @@ app.middleware("http")(csrf_middleware)
 app.include_router(chat_router)
 app.include_router(message_router)
 app.include_router(auth_router)
+
+# Глобальный пул соединений Redis
+redis_pool: redis.ConnectionPool = None
 
 
 class CurrentUser(NamedTuple):
@@ -43,7 +47,7 @@ async def get_current_user(
     if selected_token is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    redis_service = RedisService()
+    redis_service = RedisService(redis_pool)
     if await redis_service.is_blacklisted(selected_token):
         raise HTTPException(status_code=401, detail="Token has been revoked")
 
@@ -64,10 +68,18 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
+@app.on_event("startup")
+async def startup_event():
+    global redis_pool
+    redis_pool = RedisService.create_pool()
+
+
 @app.on_event("shutdown")
 async def shutdown_event():
-    redis_service = RedisService()
-    await redis_service.close()
+    global redis_pool
+    if redis_pool:
+        await RedisService.close_pool(redis_pool)
+        redis_pool = None
 
 
 @app.get("/")

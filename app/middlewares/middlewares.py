@@ -6,10 +6,8 @@ import os
 
 
 async def csrf_middleware(request: Request, call_next):
-
     if request.method in {"GET", "HEAD", "OPTIONS", "TRACE"}:
         return await call_next(request)
-
 
     if request.url.path in {"/auth/token", "/auth/refresh"}:
         return await call_next(request)
@@ -18,11 +16,10 @@ async def csrf_middleware(request: Request, call_next):
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-
-    redis_service = RedisService()
+    from app.main import redis_pool
+    redis_service = RedisService(redis_pool)
     if await redis_service.is_blacklisted(access_token):
         raise HTTPException(status_code=401, detail="Token has been revoked")
-
 
     csrf_token = request.headers.get("X-CSRF-Token")
     if not csrf_token:

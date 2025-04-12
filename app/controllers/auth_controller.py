@@ -106,7 +106,6 @@ async def logout(
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # Проверяем CSRF-токен
     try:
         payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("sub")
@@ -116,7 +115,8 @@ async def logout(
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    redis_service = RedisService()
+    from app.main import redis_pool
+    redis_service = RedisService(redis_pool)
     if access_token:
         await redis_service.add_to_blacklist(access_token, ACCESS_TOKEN_EXPIRE_MINUTES)
 

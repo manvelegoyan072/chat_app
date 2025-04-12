@@ -25,9 +25,16 @@ async def db_session():
 
 @pytest_asyncio.fixture
 async def redis_client():
-    client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+    pool = redis.ConnectionPool(
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+        max_connections=10
+    )
+    client = redis.Redis(connection_pool=pool)
     yield client
     await client.aclose()
+    await pool.aclose()
 
 
 @pytest_asyncio.fixture
